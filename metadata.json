@@ -1,0 +1,7 @@
+{
+  "name": "Generative Webcam Visualizer",
+  "description": "A real-time graphic synthesizer that transforms your webcam feed into captivating generative art. Control various visual parameters to create unique and dynamic visuals.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
