@@ -43,6 +43,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({ videoElement, params }) 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameId = useRef<number | null>(null);
   const particlesArray = useRef<Particle[]>([]);
+  const hue = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -51,18 +52,26 @@ export const Visualizer: React.FC<VisualizerProps> = ({ videoElement, params }) 
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
     
-    // Off-screen canvas for video analysis to improve performance
-    const offscreenCanvas = document.createElement('canvas');
-    const offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
-    if (!offscreenCtx) return;
+    // Off-screen canvas for video analysis
+    const analysisCanvas = document.createElement('canvas');
+    const analysisCtx = analysisCanvas.getContext('2d', { willReadFrequently: true });
+    if (!analysisCtx) return;
+
+    // Off-screen canvas for rendering before post-processing
+    const renderCanvas = document.createElement('canvas');
+    const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
+    if (!renderCtx) return;
+
 
     let mappedImage: { brightness: number; color: string }[][] = [];
     
     const setCanvasSize = () => {
       canvas.width = canvas.clientWidth;
       canvas.height = canvas.clientHeight;
-      offscreenCanvas.width = videoElement.videoWidth;
-      offscreenCanvas.height = videoElement.videoHeight;
+      renderCanvas.width = canvas.width;
+      renderCanvas.height = canvas.height;
+      analysisCanvas.width = videoElement.videoWidth;
+      analysisCanvas.height = videoElement.videoHeight;
       particlesArray.current = [];
       mappedImage = [];
     };
@@ -71,9 +80,9 @@ export const Visualizer: React.FC<VisualizerProps> = ({ videoElement, params }) 
     window.addEventListener('resize', setCanvasSize);
     
     const animate = () => {
-      // 1. WEBCAM ANALYSIS (using off-screen canvas)
-      offscreenCtx.drawImage(videoElement, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
-      const pixels = offscreenCtx.getImageData(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+      // 1. WEBCAM ANALYSIS (using analysis canvas)
+      analysisCtx.drawImage(videoElement, 0, 0, analysisCanvas.width, analysisCanvas.height);
+      const pixels = analysisCtx.getImageData(0, 0, analysisCanvas.width, analysisCanvas.height);
       
       mappedImage = [];
       for (let y = 0; y < pixels.height; y += params.resolution) {
@@ -92,36 +101,38 @@ export const Visualizer: React.FC<VisualizerProps> = ({ videoElement, params }) 
         mappedImage.push(row);
       }
 
-      // 2. FEEDBACK PASS
-      ctx.save();
-      ctx.globalAlpha = params.feedbackAmount;
-      // Center transformations for scale and rotate
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate(params.feedbackRotate);
-      ctx.scale(params.feedbackScale, params.feedbackScale);
-      ctx.translate(params.feedbackTranslateX, params.feedbackTranslateY);
-      ctx.translate(-canvas.width / 2, -canvas.height / 2);
-      ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height);
-      ctx.restore();
+      // 2. FEEDBACK PASS on the render canvas
+      renderCtx.save();
+      renderCtx.globalAlpha = params.feedbackAmount;
+      renderCtx.translate(renderCanvas.width / 2, renderCanvas.height / 2);
+      renderCtx.rotate(params.feedbackRotate);
+      renderCtx.scale(params.feedbackScale, params.feedbackScale);
+      renderCtx.translate(params.feedbackTranslateX, params.feedbackTranslateY);
+      renderCtx.translate(-renderCanvas.width / 2, -renderCanvas.height / 2);
+      renderCtx.drawImage(renderCanvas, 0, 0, renderCanvas.width, renderCanvas.height);
+      renderCtx.restore();
       
-      // 3. MAIN RENDER PASS (Mirrored)
-      ctx.save();
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
+      // 3. MAIN RENDER PASS (Mirrored) onto the render canvas
+      renderCtx.save();
+      renderCtx.translate(renderCanvas.width, 0);
+      renderCtx.scale(-1, 1);
       
       if (params.showVideo) {
-          ctx.globalAlpha = 0.2; // Dim background video
-          ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+          renderCtx.globalAlpha = 0.2; // Dim background video
+          renderCtx.drawImage(videoElement, 0, 0, renderCanvas.width, renderCanvas.height);
       }
       
-      ctx.globalAlpha = 1;
+      renderCtx.globalAlpha = 1;
+
+      // Update hue for rainbow mode
+      hue.current = (hue.current + 0.5) % 360;
 
       // Particle generation logic
       const newParticlesNeeded = params.particleCount - particlesArray.current.length;
       let addedParticles = 0;
 
       if (newParticlesNeeded > 0) {
-        for (let i = 0; i < 200; i++) { // Try to add a batch of particles per frame
+        for (let i = 0; i < 200; i++) { 
             if (addedParticles >= newParticlesNeeded) break;
             const y = Math.floor(Math.random() * mappedImage.length);
             if (!mappedImage[y]) continue;
@@ -129,9 +140,20 @@ export const Visualizer: React.FC<VisualizerProps> = ({ videoElement, params }) 
             const cell = mappedImage[y][x];
 
             if (cell && cell.brightness > params.brightnessThreshold) {
-                const positionX = (x * params.resolution * canvas.width) / pixels.width;
-                const positionY = (y * params.resolution * canvas.height) / pixels.height;
-                particlesArray.current.push(new Particle(positionX, positionY, cell.color, params.particleSpeed));
+                const positionX = (x * params.resolution * renderCanvas.width) / pixels.width;
+                const positionY = (y * params.resolution * renderCanvas.height) / pixels.height;
+                
+                let color = '#06b6d4'; // Default to monochrome
+                switch (params.colorMode) {
+                    case 'source':
+                        color = cell.color;
+                        break;
+                    case 'rainbow':
+                        color = `hsl(${hue.current}, 100%, 70%)`;
+                        break;
+                }
+
+                particlesArray.current.push(new Particle(positionX, positionY, color, params.particleSpeed));
                 addedParticles++;
             }
         }
@@ -142,13 +164,43 @@ export const Visualizer: React.FC<VisualizerProps> = ({ videoElement, params }) 
       // Update and draw particles
       particlesArray.current.forEach((p, index) => {
         p.update(params.particleSpeed);
-        p.draw(ctx);
-        if(p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height){
+        p.draw(renderCtx);
+        if(p.x < 0 || p.x > renderCanvas.width || p.y < 0 || p.y > renderCanvas.height){
           particlesArray.current.splice(index, 1);
         }
       });
       
-      ctx.restore();
+      renderCtx.restore();
+
+      // 4. KALEIDOSCOPE POST-PROCESSING PASS from render canvas to main canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (params.kaleidoscopeSlices <= 1) {
+          ctx.drawImage(renderCanvas, 0, 0);
+      } else {
+          const slices = Math.floor(params.kaleidoscopeSlices);
+          const sliceAngle = (Math.PI * 2) / slices;
+          
+          ctx.save();
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          
+          for (let i = 0; i < slices; i++) {
+              ctx.save();
+              ctx.rotate(i * sliceAngle);
+              if (i % 2 === 1) {
+                  ctx.scale(1, -1);
+              }
+              
+              ctx.beginPath();
+              ctx.moveTo(0, 0);
+              ctx.arc(0, 0, canvas.width * 1.5, -sliceAngle / 2, sliceAngle / 2);
+              ctx.closePath();
+              ctx.clip();
+              
+              ctx.drawImage(renderCanvas, -canvas.width / 2, -canvas.height / 2);
+              ctx.restore();
+          }
+          ctx.restore();
+      }
 
       animationFrameId.current = requestAnimationFrame(animate);
     };

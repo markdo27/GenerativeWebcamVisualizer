@@ -19,6 +19,8 @@ const App: React.FC = () => {
     feedbackRotate: 0.0,
     feedbackTranslateX: 0,
     feedbackTranslateY: 0,
+    kaleidoscopeSlices: 1,
+    colorMode: 'source',
   });
 
   return (

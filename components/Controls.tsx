@@ -8,6 +8,28 @@ interface ControlsProps {
   onEnterCaptureMode: () => void;
 }
 
+const ColorModeButton: React.FC<{
+    label: string;
+    mode: VisualizerParams['colorMode'];
+    currentMode: VisualizerParams['colorMode'];
+    onClick: (mode: VisualizerParams['colorMode']) => void;
+}> = ({ label, mode, currentMode, onClick }) => {
+    const isActive = mode === currentMode;
+    return (
+        <button
+            onClick={() => onClick(mode)}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-400 ${
+                isActive
+                    ? 'bg-cyan-500 text-white'
+                    : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+            }`}
+        >
+            {label}
+        </button>
+    );
+};
+
+
 export const Controls: React.FC<ControlsProps> = ({ params, setParams, onEnterCaptureMode }) => {
   const handleParamChange = <K extends keyof VisualizerParams,>(
     param: K,
@@ -59,6 +81,16 @@ export const Controls: React.FC<ControlsProps> = ({ params, setParams, onEnterCa
         onChange={value => handleParamChange('resolution', value)}
         description="Higher value = better performance."
       />
+      
+      <div className="pt-4 border-t border-gray-700">
+        <h2 className="text-lg font-semibold text-cyan-300 mb-4">Color</h2>
+        <div className="flex items-center space-x-2">
+            <ColorModeButton label="Source" mode="source" currentMode={params.colorMode} onClick={(mode) => handleParamChange('colorMode', mode)} />
+            <ColorModeButton label="Rainbow" mode="rainbow" currentMode={params.colorMode} onClick={(mode) => handleParamChange('colorMode', mode)} />
+            <ColorModeButton label="Monochrome" mode="monochrome" currentMode={params.colorMode} onClick={(mode) => handleParamChange('colorMode', mode)} />
+        </div>
+      </div>
+
 
       <div className="pt-4 border-t border-gray-700">
         <h2 className="text-lg font-semibold text-cyan-300 mb-4">Feedback Effect</h2>
@@ -110,6 +142,20 @@ export const Controls: React.FC<ControlsProps> = ({ params, setParams, onEnterCa
             onChange={value => handleParamChange('feedbackTranslateY', value)}
         />
       </div>
+
+      <div className="pt-4 border-t border-gray-700">
+          <h2 className="text-lg font-semibold text-cyan-300 mb-4">Post-Processing</h2>
+          <ControlSlider
+              label="Kaleidoscope Slices"
+              value={params.kaleidoscopeSlices}
+              min={1}
+              max={16}
+              step={1}
+              onChange={value => handleParamChange('kaleidoscopeSlices', value)}
+              description="Mirrors and repeats the output."
+          />
+      </div>
+
 
       <div className="flex items-center justify-between pt-4 border-t border-gray-700">
         <label htmlFor="showVideo" className="text-gray-300">Show Webcam Feed</label>

@@ -9,4 +9,6 @@ export interface VisualizerParams {
   feedbackRotate: number;
   feedbackTranslateX: number;
   feedbackTranslateY: number;
+  kaleidoscopeSlices: number;
+  colorMode: 'source' | 'rainbow' | 'monochrome';
 }
